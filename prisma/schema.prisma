@@ -1,0 +1,153 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  password     String
+  name         String
+  role         String        // "ADMIN" or "CANDIDATE"
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  attempts     ExamAttempt[]
+  assignments  ExamAssignment[]
+}
+
+model Subject {
+  id           String        @id @default(uuid())
+  name         String        @unique
+  description  String?
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  questions    Question[]
+  examSubjects ExamSubject[]
+}
+
+model Question {
+  id                  String           @id @default(uuid())
+  questionText        String
+  imagePath           String?
+  questionType        String           @default("SINGLE_CHOICE")
+  explanation         String?
+  difficulty          String           @default("MEDIUM")       // "EASY", "MEDIUM", "HARD"
+  defaultMarks        Float            @default(2.0)
+  defaultNegativeMarks Float           @default(0.5)
+  correctAnswer       String           // "A", "B", "C", "D"
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  
+  subjectId           String
+  subject             Subject          @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  
+  options             QuestionOption[]
+  examQuestions       ExamQuestion[]
+  attemptAnswers      AttemptAnswer[]
+}
+
+model QuestionOption {
+  id         String   @id @default(uuid())
+  questionId String
+  optionCode String   // "A", "B", "C", "D"
+  optionText String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+}
+
+model Exam {
+  id            String        @id @default(uuid())
+  name          String
+  description   String?
+  instructions  String?
+  duration      Int           @default(60) // Overall duration in minutes
+  timerMode     String        @default("OVERALL") // "OVERALL" or "SUBJECT_WISE"
+  status        String        @default("DRAFT")   // "DRAFT" or "PUBLISHED"
+  maxAttempts   Int           @default(-1)        // -1 for unlimited
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  
+  subjects      ExamSubject[]
+  questions     ExamQuestion[]
+  attempts      ExamAttempt[]
+  assignments   ExamAssignment[]
+}
+
+model ExamSubject {
+  id                String   @id @default(uuid())
+  examId            String
+  subjectId         String
+  questionCount     Int      @default(0)
+  duration          Int      @default(0) // duration in minutes (if SUBJECT_WISE)
+  marks             Float    @default(2.0)
+  negativeMarks     Float    @default(0.5)
+  questionSelection String   @default("MANUAL") // "MANUAL" or "RANDOM"
+  
+  exam              Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  subject           Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  
+  @@unique([examId, subjectId])
+}
+
+model ExamQuestion {
+  id         String   @id @default(uuid())
+  examId     String
+  questionId String
+  order      Int      @default(0)
+  
+  exam       Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  
+  @@unique([examId, questionId])
+}
+
+model ExamAttempt {
+  id                 String          @id @default(uuid())
+  userId             String
+  examId             String
+  startTime          DateTime        @default(now())
+  endTime            DateTime
+  status             String          @default("IN_PROGRESS") // "IN_PROGRESS", "SUBMITTED", "AUTO_SUBMITTED", "EXPIRED"
+  submittedAt        DateTime?
+  
+  activeSubjectId    String?
+  activeSubjectEndTime DateTime?
+  
+  score              Float?
+  accuracy           Float?
+  
+  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exam               Exam            @relation(fields: [examId], references: [id], onDelete: Cascade)
+  answers            AttemptAnswer[]
+}
+
+model AttemptAnswer {
+  id                String      @id @default(uuid())
+  attemptId         String
+  questionId        String
+  selectedOption    String?
+  isMarkedForReview Boolean     @default(false)
+  answeredAt        DateTime    @default(now())
+  
+  attempt           ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question          Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  
+  @@unique([attemptId, questionId])
+}
+
+model ExamAssignment {
+  id        String   @id @default(uuid())
+  examId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  exam      Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([examId, userId])
+}
+
