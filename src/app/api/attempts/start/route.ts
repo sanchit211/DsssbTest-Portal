@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import db from "@/lib/db";
 import { verifyToken } from "@/lib/auth";
+import { selectDiverseQuestions } from "@/lib/question-selection";
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,6 +24,7 @@ export async function POST(req: NextRequest) {
         subjects: {
           orderBy: { id: "asc" }, // consistent sequence order
         },
+        questions: true,
       },
     });
 
@@ -46,6 +48,30 @@ export async function POST(req: NextRequest) {
 
     if (!assignment) {
       return NextResponse.json({ error: "This exam has not been assigned to you" }, { status: 403 });
+    }
+
+    // If the exam has no questions allocated, automatically pull random questions from the bank matching subject configs
+    if (!exam.questions || exam.questions.length === 0) {
+      let currentOrder = 0;
+      for (const es of exam.subjects) {
+        const subjectQuestions = await db.question.findMany({
+          where: { subjectId: es.subjectId },
+        });
+
+        if (subjectQuestions.length > 0) {
+          const count = Math.min(es.questionCount, subjectQuestions.length);
+          const selected = selectDiverseQuestions(subjectQuestions, count);
+
+          await db.examQuestion.createMany({
+            data: selected.map((q: any, idx: number) => ({
+              examId,
+              questionId: q.id,
+              order: currentOrder + idx,
+            })),
+          });
+          currentOrder += count;
+        }
+      }
     }
 
     const startTime = new Date();

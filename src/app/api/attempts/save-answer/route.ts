@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { attemptId, questionId, selectedOption, isMarkedForReview } = await req.json();
+    const { attemptId, questionId, selectedOption, isMarkedForReview, timeSpent } = await req.json();
 
     if (!attemptId || !questionId) {
       return NextResponse.json({ error: "Attempt ID and Question ID are required" }, { status: 400 });
@@ -75,6 +75,7 @@ export async function POST(req: NextRequest) {
         selectedOption: selectedOption === "" ? null : selectedOption,
         isMarkedForReview: isMarkedForReview ?? false,
         answeredAt: now,
+        timeSpent: typeof timeSpent === "number" ? timeSpent : undefined,
       },
       create: {
         attemptId,
@@ -82,6 +83,7 @@ export async function POST(req: NextRequest) {
         selectedOption: selectedOption === "" ? null : selectedOption,
         isMarkedForReview: isMarkedForReview ?? false,
         answeredAt: now,
+        timeSpent: typeof timeSpent === "number" ? timeSpent : 0,
       },
     });
 

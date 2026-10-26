@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import db from "@/lib/db";
 import { verifyToken } from "@/lib/auth";
+import { checkAndSubmitExpiredAttempts } from "@/lib/attempts";
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,6 +13,9 @@ export async function GET(req: NextRequest) {
     }
 
     const userId = decoded.id;
+
+    // Auto-submit expired attempts first
+    await checkAndSubmitExpiredAttempts(userId);
 
     const attempts = await db.examAttempt.findMany({
       where: { userId },

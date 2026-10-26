@@ -65,11 +65,30 @@ export async function DELETE(
 
     const { id } = await params;
 
-    await db.subject.delete({
-      where: { id },
+    await db.$transaction(async (tx: any) => {
+      // 1. Delete the subject (cascades questions, options, examSubjects, etc.)
+      await tx.subject.delete({
+        where: { id },
+      });
+
+      // 2. Find and delete exams that no longer have any questions or subjects
+      const exams = await tx.exam.findMany({
+        include: {
+          questions: true,
+          subjects: true,
+        },
+      });
+
+      for (const exam of exams) {
+        if (exam.questions.length === 0 || exam.subjects.length === 0) {
+          await tx.exam.delete({
+            where: { id: exam.id },
+          }).catch(() => {});
+        }
+      }
     });
 
-    return NextResponse.json({ message: "Subject deleted successfully" });
+    return NextResponse.json({ message: "Subject and related exams/assignments deleted successfully" });
   } catch (error: any) {
     console.error("DELETE subject error:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

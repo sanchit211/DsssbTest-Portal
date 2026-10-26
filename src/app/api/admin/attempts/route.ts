@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import db from "@/lib/db";
 import { verifyToken } from "@/lib/auth";
+import { checkAndSubmitExpiredAttempts } from "@/lib/attempts";
 
 function isAdmin(req: NextRequest) {
   const token = req.cookies.get("token")?.value;
@@ -14,6 +15,9 @@ export async function GET(req: NextRequest) {
     if (!isAdmin(req)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    // Auto-submit all expired attempts first
+    await checkAndSubmitExpiredAttempts();
 
     const attempts = await db.examAttempt.findMany({
       orderBy: { startTime: "desc" },

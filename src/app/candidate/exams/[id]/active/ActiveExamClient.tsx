@@ -26,6 +26,7 @@ interface SavedAnswer {
   questionId: string;
   selectedOption: string | null;
   isMarkedForReview: boolean;
+  timeSpent: number;
 }
 
 export default function ActiveExamClient({ examId }: { examId: string }) {
@@ -41,6 +42,10 @@ export default function ActiveExamClient({ examId }: { examId: string }) {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<SavedAnswer[]>([]);
+  
+  // Question Timer States
+  const [timeSpentMap, setTimeSpentMap] = useState<Record<string, number>>({});
+  const prevQIdRef = useRef<string | null>(null);
   
   const [activeSubId, setActiveSubId] = useState("");
   const [activeQIndex, setActiveQIndex] = useState(0); // Index within the active subject's questions
@@ -106,7 +111,11 @@ export default function ActiveExamClient({ examId }: { examId: string }) {
         }
 
         setQuestions(allocatedQuestions);
-        setAnswers(allocatedQuestions.map(q => ({ questionId: q.id, selectedOption: null, isMarkedForReview: false })));
+        setAnswers(allocatedQuestions.map(q => ({ questionId: q.id, selectedOption: null, isMarkedForReview: false, timeSpent: 0 })));
+        
+        const initialTimeMap: Record<string, number> = {};
+        allocatedQuestions.forEach(q => { initialTimeMap[q.id] = 0; });
+        setTimeSpentMap(initialTimeMap);
         
         setActiveSubId(subjectsList[0]?.subjectId || "");
         
@@ -130,14 +139,21 @@ export default function ActiveExamClient({ examId }: { examId: string }) {
         setTimerMode(data.timerMode);
         setSubjects(data.subjects);
         setQuestions(data.questions);
-        setAnswers(data.questions.map((q: any) => {
+        
+        const initialTimeMap: Record<string, number> = {};
+        const answersList = data.questions.map((q: any) => {
           const saved = data.answers.find((a: any) => a.questionId === q.id);
+          const timeSpentVal = saved ? (saved.timeSpent || 0) : 0;
+          initialTimeMap[q.id] = timeSpentVal;
           return {
             questionId: q.id,
             selectedOption: saved ? saved.selectedOption : null,
             isMarkedForReview: saved ? saved.isMarkedForReview : false,
+            timeSpent: timeSpentVal,
           };
-        }));
+        });
+        setAnswers(answersList);
+        setTimeSpentMap(initialTimeMap);
 
         // Set Active Subject section
         if (data.timerMode === "SUBJECT_WISE") {
@@ -185,14 +201,21 @@ export default function ActiveExamClient({ examId }: { examId: string }) {
         setTimerMode(data.timerMode);
         setSubjects(data.subjects);
         setQuestions(data.questions);
-        setAnswers(data.questions.map((q: any) => {
+        
+        const initialTimeMap: Record<string, number> = {};
+        const answersList = data.questions.map((q: any) => {
           const saved = data.answers.find((a: any) => a.questionId === q.id);
+          const timeSpentVal = saved ? (saved.timeSpent || 0) : 0;
+          initialTimeMap[q.id] = timeSpentVal;
           return {
             questionId: q.id,
             selectedOption: saved ? saved.selectedOption : null,
             isMarkedForReview: saved ? saved.isMarkedForReview : false,
+            timeSpent: timeSpentVal,
           };
-        }));
+        });
+        setAnswers(answersList);
+        setTimeSpentMap(initialTimeMap);
         
         setActiveSubId(data.activeSubjectId);
         setActiveQIndex(0);
@@ -250,12 +273,63 @@ export default function ActiveExamClient({ examId }: { examId: string }) {
     }
   }, [currentQ]);
 
+  // Save question-level time spent in background
+  const saveTimeSpent = async (qId: string, time: number) => {
+    if (isPreview) return;
+    const ans = answers.find(a => a.questionId === qId);
+    const selectedOption = ans?.selectedOption || "";
+    const isMarkedForReview = ans?.isMarkedForReview || false;
+
+    try {
+      await fetch("/api/attempts/save-answer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          attemptId,
+          questionId: qId,
+          selectedOption,
+          isMarkedForReview,
+          timeSpent: time,
+        }),
+      });
+    } catch (err) {
+      console.error("Failed to save time spent:", qId, err);
+    }
+  };
+
+  // Effect to increment time spent on active question every second
+  useEffect(() => {
+    if (loading || !currentQ?.id) return;
+
+    const interval = setInterval(() => {
+      setTimeSpentMap(prev => ({
+        ...prev,
+        [currentQ.id]: (prev[currentQ.id] || 0) + 1,
+      }));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [currentQ?.id, loading]);
+
+  // Effect to save time spent when navigating away from a question
+  useEffect(() => {
+    const prevQId = prevQIdRef.current;
+    if (prevQId && prevQId !== currentQ?.id) {
+      const timeSpentVal = timeSpentMap[prevQId] || 0;
+      saveTimeSpent(prevQId, timeSpentVal);
+    }
+    if (currentQ?.id) {
+      prevQIdRef.current = currentQ.id;
+    }
+  }, [currentQ?.id]);
+
   // Save selected answer option
   const handleSaveOption = async (optionCode: string) => {
+    const updatedTime = timeSpentMap[currentQ.id] || 0;
     // Update local React state instantly
     const updated = answers.map((ans) => {
       if (ans.questionId === currentQ.id) {
-        return { ...ans, selectedOption: optionCode };
+        return { ...ans, selectedOption: optionCode, timeSpent: updatedTime };
       }
       return ans;
     });
@@ -273,6 +347,7 @@ export default function ActiveExamClient({ examId }: { examId: string }) {
           questionId: currentQ.id,
           selectedOption: optionCode,
           isMarkedForReview: currentAns?.isMarkedForReview ?? false,
+          timeSpent: updatedTime,
         }),
       });
     } catch (err) {
@@ -282,9 +357,10 @@ export default function ActiveExamClient({ examId }: { examId: string }) {
 
   // Clear answer response
   const handleClearResponse = async () => {
+    const updatedTime = timeSpentMap[currentQ.id] || 0;
     const updated = answers.map((ans) => {
       if (ans.questionId === currentQ.id) {
-        return { ...ans, selectedOption: null };
+        return { ...ans, selectedOption: null, timeSpent: updatedTime };
       }
       return ans;
     });
@@ -301,6 +377,7 @@ export default function ActiveExamClient({ examId }: { examId: string }) {
           questionId: currentQ.id,
           selectedOption: "",
           isMarkedForReview: currentAns?.isMarkedForReview ?? false,
+          timeSpent: updatedTime,
         }),
       });
     } catch (err) {
@@ -311,10 +388,11 @@ export default function ActiveExamClient({ examId }: { examId: string }) {
   // Toggle Mark for Review
   const handleMarkForReview = async () => {
     const nextReview = !(currentAns?.isMarkedForReview ?? false);
+    const updatedTime = timeSpentMap[currentQ.id] || 0;
 
     const updated = answers.map((ans) => {
       if (ans.questionId === currentQ.id) {
-        return { ...ans, isMarkedForReview: nextReview };
+        return { ...ans, isMarkedForReview: nextReview, timeSpent: updatedTime };
       }
       return ans;
     });
@@ -335,6 +413,7 @@ export default function ActiveExamClient({ examId }: { examId: string }) {
           questionId: currentQ.id,
           selectedOption: currentAns?.selectedOption || "",
           isMarkedForReview: nextReview,
+          timeSpent: updatedTime,
         }),
       });
       handleSaveAndNext();
@@ -388,6 +467,13 @@ export default function ActiveExamClient({ examId }: { examId: string }) {
     }
 
     setSubmitting(true);
+    
+    // Save current active question's time spent before final submit
+    if (currentQ?.id) {
+      const timeSpentVal = timeSpentMap[currentQ.id] || 0;
+      await saveTimeSpent(currentQ.id, timeSpentVal);
+    }
+
     try {
       const res = await fetch("/api/attempts/submit", {
         method: "POST",
@@ -424,7 +510,7 @@ export default function ActiveExamClient({ examId }: { examId: string }) {
     );
   }
 
-  if (error || !currentQ) {
+  if (error || (questions.length === 0 && !loading)) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center gap-4 text-center p-6">
         <div className="text-rose-400 bg-rose-500/10 p-4 border border-rose-500/20 rounded-2xl max-w-md">
@@ -499,98 +585,115 @@ export default function ActiveExamClient({ examId }: { examId: string }) {
       <div className="flex-1 flex overflow-hidden min-h-0">
         {/* Left Side: Question Pane */}
         <div className="flex-1 flex flex-col overflow-hidden border-r border-slate-850">
-          <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6">
-            {/* Question title */}
-            <div className="flex items-center justify-between text-xs font-medium text-slate-400">
-              <span>
-                Question {activeQIndex + 1} of {activeSubjectQs.length}
-              </span>
-              <span className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700 text-slate-500 uppercase">
-                {currentQ.difficulty}
-              </span>
+          {activeSubjectQs.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400 gap-4">
+              <div className="text-amber-400 bg-amber-500/10 p-5 border border-amber-500/20 rounded-2xl max-w-md space-y-2">
+                <AlertTriangle className="mx-auto text-amber-400" size={28} />
+                <p className="font-bold text-sm">No Questions Allocated</p>
+                <p className="text-xs leading-relaxed">
+                  There are no questions allocated for the <span className="text-white font-semibold">{subjects.find(s => s.subjectId === activeSubId)?.name}</span> subject.
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  Please select another subject section using the tabs above, or submit your exam using the button on the right.
+                </p>
+              </div>
             </div>
+          ) : (
+            <>
+              <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6">
+                {/* Question title */}
+                <div className="flex items-center justify-between text-xs font-medium text-slate-400">
+                  <span>
+                    Question {activeQIndex + 1} of {activeSubjectQs.length}
+                  </span>
+                  <span className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700 text-slate-500 uppercase">
+                    {currentQ.difficulty}
+                  </span>
+                </div>
 
-            {/* Question Text */}
-            <h2 className="text-white font-medium text-lg leading-relaxed whitespace-pre-wrap">
-              {currentQ.questionText}
-            </h2>
+                {/* Question Text */}
+                <h2 className="text-white font-medium text-lg leading-relaxed whitespace-pre-wrap">
+                  {currentQ.questionText}
+                </h2>
 
-            {/* MCQ Options Choices List */}
-            <div className="space-y-3 max-w-2xl">
-              {currentQ.options.map((opt) => {
-                const isSelected = currentAns?.selectedOption === opt.optionCode;
-                return (
-                  <button
-                    key={opt.optionCode}
-                    onClick={() => handleSaveOption(opt.optionCode)}
-                    className={`w-full flex items-center gap-4 p-4 rounded-xl border text-sm font-medium transition-all text-left cursor-pointer ${
-                      isSelected
-                        ? "bg-indigo-600/10 border-indigo-500 text-white shadow-lg shadow-indigo-600/5"
-                        : "bg-slate-950/40 border-slate-800 text-slate-400 hover:bg-slate-950/60"
-                    }`}
-                  >
-                    <span className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-colors ${
-                      isSelected ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-500"
-                    }`}>
-                      {opt.optionCode}
-                    </span>
-                    <span>{opt.optionText}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+                {/* MCQ Options Choices List */}
+                <div className="space-y-3 max-w-2xl">
+                  {currentQ.options.map((opt) => {
+                    const isSelected = currentAns?.selectedOption === opt.optionCode;
+                    return (
+                      <button
+                        key={opt.optionCode}
+                        onClick={() => handleSaveOption(opt.optionCode)}
+                        className={`w-full flex items-center gap-4 p-4 rounded-xl border text-sm font-medium transition-all text-left cursor-pointer ${
+                          isSelected
+                            ? "bg-indigo-600/10 border-indigo-500 text-white shadow-lg shadow-indigo-600/5"
+                            : "bg-slate-950/40 border-slate-800 text-slate-400 hover:bg-slate-950/60"
+                        }`}
+                      >
+                        <span className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-colors ${
+                          isSelected ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-500"
+                        }`}>
+                          {opt.optionCode}
+                        </span>
+                        <span>{opt.optionText}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-          {/* Left panel actions bottom bar */}
-          <div className="h-16 bg-slate-950 border-t border-slate-850 px-6 flex justify-between items-center shrink-0">
-            {(() => {
-              const currentSubIdx = subjects.findIndex((s: any) => s.subjectId === activeSubId);
-              const isLastQuestionOfSection = activeQIndex === activeSubjectQs.length - 1;
-              const hasNextSection = currentSubIdx < subjects.length - 1;
-              
-              const isSaveNextDisabled = isLastQuestionOfSection && (timerMode !== "OVERALL" || !hasNextSection);
-              const isPreviousDisabled = activeQIndex === 0 && (timerMode !== "OVERALL" || currentSubIdx === 0);
+              {/* Left panel actions bottom bar */}
+              <div className="h-16 bg-slate-950 border-t border-slate-850 px-6 flex justify-between items-center shrink-0">
+                {(() => {
+                  const currentSubIdx = subjects.findIndex((s: any) => s.subjectId === activeSubId);
+                  const isLastQuestionOfSection = activeQIndex === activeSubjectQs.length - 1;
+                  const hasNextSection = currentSubIdx < subjects.length - 1;
+                  
+                  const isSaveNextDisabled = isLastQuestionOfSection && (timerMode !== "OVERALL" || !hasNextSection);
+                  const isPreviousDisabled = activeQIndex === 0 && (timerMode !== "OVERALL" || currentSubIdx === 0);
 
-              return (
-                <>
-                  <div className="flex gap-2">
-                    <button
-                      disabled={isPreviousDisabled}
-                      onClick={handlePrevious}
-                      className="inline-flex items-center gap-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-350 font-medium px-4 py-2 rounded-xl text-xs border border-slate-750 transition-colors cursor-pointer"
-                    >
-                      <ChevronLeft size={16} />
-                      Previous
-                    </button>
-                    <button
-                      disabled={!currentAns?.selectedOption}
-                      onClick={handleClearResponse}
-                      className="bg-slate-800 hover:bg-slate-700 disabled:opacity-45 text-rose-400 hover:text-rose-350 font-medium px-4 py-2 rounded-xl text-xs border border-slate-750 transition-colors cursor-pointer"
-                    >
-                      Clear Response
-                    </button>
-                  </div>
+                  return (
+                    <>
+                      <div className="flex gap-2">
+                        <button
+                          disabled={isPreviousDisabled}
+                          onClick={handlePrevious}
+                          className="inline-flex items-center gap-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-350 font-medium px-4 py-2 rounded-xl text-xs border border-slate-750 transition-colors cursor-pointer"
+                        >
+                          <ChevronLeft size={16} />
+                          Previous
+                        </button>
+                        <button
+                          disabled={!currentAns?.selectedOption}
+                          onClick={handleClearResponse}
+                          className="bg-slate-800 hover:bg-slate-700 disabled:opacity-45 text-rose-400 hover:text-rose-350 font-medium px-4 py-2 rounded-xl text-xs border border-slate-750 transition-colors cursor-pointer"
+                        >
+                          Clear Response
+                        </button>
+                      </div>
 
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleMarkForReview}
-                      className="bg-indigo-900/40 hover:bg-indigo-900/60 text-indigo-400 font-semibold px-4 py-2 rounded-xl text-xs border border-indigo-500/20 transition-all cursor-pointer"
-                    >
-                      {currentAns?.isMarkedForReview ? "Unmark Review" : "Mark for Review"}
-                    </button>
-                    <button
-                      disabled={isSaveNextDisabled}
-                      onClick={handleSaveAndNext}
-                      className="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-medium px-4 py-2 rounded-xl text-xs shadow-md transition-colors cursor-pointer"
-                    >
-                      Save & Next
-                      <ChevronRight size={16} />
-                    </button>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleMarkForReview}
+                          className="bg-indigo-900/40 hover:bg-indigo-900/60 text-indigo-400 font-semibold px-4 py-2 rounded-xl text-xs border border-indigo-500/20 transition-all cursor-pointer"
+                        >
+                          {currentAns?.isMarkedForReview ? "Unmark Review" : "Mark for Review"}
+                        </button>
+                        <button
+                          disabled={isSaveNextDisabled}
+                          onClick={handleSaveAndNext}
+                          className="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-medium px-4 py-2 rounded-xl text-xs shadow-md transition-colors cursor-pointer"
+                        >
+                          Save & Next
+                          <ChevronRight size={16} />
+                        </button>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Right Side Panel: Question Palette & Submit */}

@@ -84,8 +84,47 @@ export async function DELETE(
 
     const { id } = await params;
 
-    await db.question.delete({
-      where: { id },
+    await db.$transaction(async (tx: any) => {
+      const targetQuestion = await tx.question.findUnique({
+        where: { id },
+        select: { subjectId: true },
+      });
+
+      if (!targetQuestion) return;
+
+      const subjectId = targetQuestion.subjectId;
+
+      // 1. Delete the question (cascades options, examQuestions, attemptAnswers)
+      await tx.question.delete({
+        where: { id },
+      });
+
+      // 2. If subject has 0 questions remaining, delete subject
+      const remainingQuestionsInSubject = await tx.question.count({
+        where: { subjectId },
+      });
+
+      if (remainingQuestionsInSubject === 0) {
+        await tx.subject.delete({
+          where: { id: subjectId },
+        }).catch(() => {});
+      }
+
+      // 3. Find and delete exams that have 0 questions remaining or 0 subjects remaining
+      const exams = await tx.exam.findMany({
+        include: {
+          questions: true,
+          subjects: true,
+        },
+      });
+
+      for (const exam of exams) {
+        if (exam.questions.length === 0 || exam.subjects.length === 0) {
+          await tx.exam.delete({
+            where: { id: exam.id },
+          }).catch(() => {});
+        }
+      }
     });
 
     return NextResponse.json({ message: "Question deleted successfully" });

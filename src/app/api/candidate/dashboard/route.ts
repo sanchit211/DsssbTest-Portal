@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import db from "@/lib/db";
 import { verifyToken } from "@/lib/auth";
+import { checkAndSubmitExpiredAttempts } from "@/lib/attempts";
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,6 +13,9 @@ export async function GET(req: NextRequest) {
     }
 
     const userId = decoded.id;
+
+    // Auto-submit expired attempts first
+    await checkAndSubmitExpiredAttempts(userId);
 
     // 1. Fetch published exams
     const exams = await db.exam.findMany({
@@ -37,19 +41,23 @@ export async function GET(req: NextRequest) {
     });
 
     // Formatting exams
-    const formattedExams = exams.map((e: any) => ({
-      id: e.id,
-      name: e.name,
-      description: e.description,
-      duration: e.duration,
-      timerMode: e.timerMode,
-      questionsCount: e._count.questions,
-      subjects: e.subjects.map((es: any) => ({
-        name: es.subject.name,
-        questionCount: es.questionCount,
-        duration: es.duration,
-      })),
-    }));
+    const formattedExams = exams.map((e: any) => {
+      const subjectTotalQuestions = e.subjects.reduce((sum: number, s: any) => sum + s.questionCount, 0);
+      const questionsCount = e._count.questions > 0 ? e._count.questions : subjectTotalQuestions;
+      return {
+        id: e.id,
+        name: e.name,
+        description: e.description,
+        duration: e.duration,
+        timerMode: e.timerMode,
+        questionsCount,
+        subjects: e.subjects.map((es: any) => ({
+          name: es.subject.name,
+          questionCount: es.questionCount,
+          duration: es.duration,
+        })),
+      };
+    });
 
     // 2. Fetch candidate stats
     const attempts = await db.examAttempt.findMany({

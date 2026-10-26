@@ -132,6 +132,7 @@ model AttemptAnswer {
   selectedOption    String?
   isMarkedForReview Boolean     @default(false)
   answeredAt        DateTime    @default(now())
+  timeSpent         Int         @default(0)
   
   attempt           ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
   question          Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { submitExamAttempt } from "../[id]/route";
+import { submitExamAttempt } from "@/lib/attempts";
 import { verifyToken } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {

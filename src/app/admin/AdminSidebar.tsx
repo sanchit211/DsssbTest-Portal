@@ -45,7 +45,7 @@ export default function AdminSidebar() {
       {/* Mobile Toggle Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="lg:hidden fixed z-50 bottom-4 right-4 bg-indigo-600 text-white p-3 rounded-full shadow-lg border border-indigo-500 hover:bg-indigo-500 cursor-pointer"
+        className="lg:hidden fixed z-50 bottom-4 right-4 bg-indigo-600 text-white p-3 rounded-full shadow-lg border border-indigo-500 hover:bg-indigo-500 cursor-pointer print:hidden"
       >
         {isOpen ? <X size={20} /> : <Menu size={20} />}
       </button>
@@ -54,7 +54,7 @@ export default function AdminSidebar() {
       <div
         className={`${
           isOpen ? "translate-x-0 w-64" : "-translate-x-full lg:translate-x-0 lg:w-20"
-        } transition-all duration-300 ease-in-out bg-slate-950 border-r border-slate-800 flex flex-col z-40 fixed lg:relative h-full shrink-0`}
+        } transition-all duration-300 ease-in-out bg-slate-950 border-r border-slate-800 flex flex-col z-40 fixed lg:relative h-full shrink-0 print:hidden`}
       >
         {/* Logo Section */}
         <div className="h-16 flex items-center px-6 border-b border-slate-800 gap-3">

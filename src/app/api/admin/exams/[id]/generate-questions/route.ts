@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import db from "@/lib/db";
 import { verifyToken } from "@/lib/auth";
+import { selectDiverseQuestions } from "@/lib/question-selection";
 
 function isAdmin(req: NextRequest) {
   const token = req.cookies.get("token")?.value;
@@ -35,12 +36,7 @@ export async function POST(
       }, { status: 400 });
     }
 
-    let selectedQuestions: typeof allQuestions = [];
-
-    // Helper to shuffle array
-    const shuffle = (array: any[]) => array.sort(() => 0.5 - Math.random());
-
-    // 2. Select questions based on difficulty distribution if supplied
+    // 2. Select questions based on difficulty distribution if supplied, using diverse sampling
     const hasDistribution = easyCount !== undefined || mediumCount !== undefined || hardCount !== undefined;
 
     if (hasDistribution) {
@@ -63,16 +59,13 @@ export async function POST(
           error: `Insufficient questions in bank for specified distribution. Available - Easy: ${easyQuestions.length}, Medium: ${mediumQuestions.length}, Hard: ${hardQuestions.length}`
         }, { status: 400 });
       }
-
-      selectedQuestions = [
-        ...shuffle(easyQuestions).slice(0, eReq),
-        ...shuffle(mediumQuestions).slice(0, mReq),
-        ...shuffle(hardQuestions).slice(0, hReq),
-      ];
-    } else {
-      // Direct random selection
-      selectedQuestions = shuffle(allQuestions).slice(0, count);
     }
+
+    const selectedQuestions = selectDiverseQuestions(allQuestions, Number(count), hasDistribution ? {
+      easyCount: Number(easyCount || 0),
+      mediumCount: Number(mediumCount || 0),
+      hardCount: Number(hardCount || 0),
+    } : undefined);
 
     // 3. Update the exam's questions. 
     // Delete existing ExamQuestions for this exam and this subject

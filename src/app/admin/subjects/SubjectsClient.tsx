@@ -117,6 +117,30 @@ export default function SubjectsClient() {
     }
   };
 
+  const handleDeleteAll = async () => {
+    const confirmFirst = confirm("WARNING: Are you sure you want to delete ALL subjects? This will automatically remove all associated questions, exams, and candidate exam assignments!");
+    if (!confirmFirst) return;
+
+    const confirmSecond = confirm("Double Check: Are you absolutely sure? This will delete all subjects, questions, exams, attempts, and assignments permanently.");
+    if (!confirmSecond) return;
+
+    try {
+      const res = await fetch("/api/admin/subjects", {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to delete all subjects");
+      }
+
+      alert("Successfully deleted all subjects and related data!");
+      fetchSubjects();
+    } catch (err: any) {
+      alert(err.message || "Failed to delete all subjects");
+    }
+  };
+
   const filteredSubjects = subjects.filter((s) =>
     s.name.toLowerCase().includes(search.toLowerCase()) ||
     (s.description && s.description.toLowerCase().includes(search.toLowerCase()))
@@ -130,13 +154,24 @@ export default function SubjectsClient() {
           <h1 className="text-3xl font-extrabold text-white tracking-tight">Subject Management</h1>
           <p className="text-slate-400 text-sm mt-1">Configure subjects that will be used for exams and questions</p>
         </div>
-        <button
-          onClick={handleOpenAdd}
-          className="inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-4 py-2.5 rounded-xl text-sm shadow-lg shadow-indigo-600/10 cursor-pointer"
-        >
-          <Plus size={18} />
-          Add Subject
-        </button>
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={handleDeleteAll}
+            disabled={subjects.length === 0}
+            className="inline-flex items-center justify-center gap-2 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-40 disabled:hover:bg-rose-500/10 text-rose-400 font-medium px-4 py-2.5 rounded-xl text-sm border border-rose-500/20 transition-all cursor-pointer shadow-lg shadow-rose-500/5"
+            title="Delete All Subjects"
+          >
+            <Trash2 size={18} />
+            Delete All
+          </button>
+          <button
+            onClick={handleOpenAdd}
+            className="inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-4 py-2.5 rounded-xl text-sm shadow-lg shadow-indigo-600/10 cursor-pointer"
+          >
+            <Plus size={18} />
+            Add Subject
+          </button>
+        </div>
       </div>
 
       {/* Stats/Controls */}

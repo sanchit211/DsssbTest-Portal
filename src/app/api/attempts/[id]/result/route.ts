@@ -136,6 +136,7 @@ export async function GET(
         explanation: q.explanation,
         subjectName: q.subject.name,
         difficulty: q.difficulty,
+        timeSpent: ans ? ans.timeSpent : 0,
       });
 
       subjectStats[q.subjectId] = stats;

@@ -30,18 +30,22 @@ export async function GET(req: NextRequest) {
     });
 
     // Formatting response to match UI requirements
-    const formatted = exams.map((exam: any) => ({
-      id: exam.id,
-      name: exam.name,
-      description: exam.description,
-      duration: exam.duration,
-      timerMode: exam.timerMode,
-      status: exam.status,
-      createdAt: exam.createdAt,
-      subjects: exam.subjects.map((es: any) => es.subject.name),
-      questionsCount: exam._count.questions,
-      attemptsCount: exam._count.attempts,
-    }));
+    const formatted = exams.map((exam: any) => {
+      const subjectTotalQuestions = exam.subjects.reduce((sum: number, s: any) => sum + s.questionCount, 0);
+      const questionsCount = exam._count.questions > 0 ? exam._count.questions : subjectTotalQuestions;
+      return {
+        id: exam.id,
+        name: exam.name,
+        description: exam.description,
+        duration: exam.duration,
+        timerMode: exam.timerMode,
+        status: exam.status,
+        createdAt: exam.createdAt,
+        subjects: exam.subjects.map((es: any) => es.subject.name),
+        questionsCount,
+        attemptsCount: exam._count.attempts,
+      };
+    });
 
     return NextResponse.json(formatted);
   } catch (error: any) {

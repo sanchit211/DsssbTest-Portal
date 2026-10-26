@@ -21,7 +21,7 @@ export async function GET() {
 
     const admin = await db.user.create({
       data: {
-        email: "admin@test.com",
+        email: "admin@exam.com",
         password: hashedAdminPassword,
         name: "Admin User",
         role: "ADMIN",
@@ -30,7 +30,7 @@ export async function GET() {
 
     const candidate = await db.user.create({
       data: {
-        email: "candidate@test.com",
+        email: "candidate@exam.com",
         password: hashedCandidatePassword,
         name: "Candidate User",
         role: "CANDIDATE",
@@ -341,8 +341,8 @@ export async function GET() {
     return NextResponse.json({
       message: "Database seeded successfully",
       users: {
-        admin: "admin@test.com / admin123",
-        candidate: "candidate@test.com / candidate123",
+        admin: "admin@exam.com / admin123",
+        candidate: "candidate@exam.com / candidate123",
       },
       subjects: ["English", "Quantitative Aptitude", "General Knowledge", "Reasoning"],
       questionsCount: 20,

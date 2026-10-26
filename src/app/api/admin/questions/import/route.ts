@@ -100,76 +100,89 @@ export async function POST(req: NextRequest) {
     }
 
     let importCount = 0;
+    const subjectCache = new Map<string, any>();
 
-    await db.$transaction(async (tx: any) => {
-      for (const row of dataRows) {
-        const questionText = row[colIdx.question];
-        const optAText = row[colIdx.optA];
-        const optBText = row[colIdx.optB];
-        const optCText = colIdx.optC !== -1 ? row[colIdx.optC] : "";
-        const optDText = colIdx.optD !== -1 ? row[colIdx.optD] : "";
-        const correctAnswer = row[colIdx.correct];
-        const explanation = colIdx.explanation !== -1 ? row[colIdx.explanation] : "";
-        const subjectName = row[colIdx.subject];
-        let difficulty = colIdx.difficulty !== -1 ? row[colIdx.difficulty]?.toUpperCase() : "MEDIUM";
-        let marks = colIdx.marks !== -1 ? parseFloat(row[colIdx.marks]) : 2.0;
-        let negMarks = colIdx.negMarks !== -1 ? parseFloat(row[colIdx.negMarks]) : 0.5;
+    await db.$transaction(
+      async (tx: any) => {
+        for (const row of dataRows) {
+          const questionText = row[colIdx.question];
+          const optAText = row[colIdx.optA];
+          const optBText = row[colIdx.optB];
+          const optCText = colIdx.optC !== -1 ? row[colIdx.optC] : "";
+          const optDText = colIdx.optD !== -1 ? row[colIdx.optD] : "";
+          const correctAnswer = row[colIdx.correct];
+          const explanation = colIdx.explanation !== -1 ? row[colIdx.explanation] : "";
+          const subjectName = row[colIdx.subject]?.trim();
+          let difficulty = colIdx.difficulty !== -1 ? row[colIdx.difficulty]?.toUpperCase() : "MEDIUM";
+          let marks = colIdx.marks !== -1 ? parseFloat(row[colIdx.marks]) : 2.0;
+          let negMarks = colIdx.negMarks !== -1 ? parseFloat(row[colIdx.negMarks]) : 0.5;
 
-        if (!questionText || !optAText || !optBText || !correctAnswer || !subjectName) {
-          continue; // Skip invalid rows
-        }
+          if (!questionText || !optAText || !optBText || !correctAnswer || !subjectName) {
+            continue; // Skip invalid rows
+          }
 
-        if (difficulty !== "EASY" && difficulty !== "MEDIUM" && difficulty !== "HARD") {
-          difficulty = "MEDIUM";
-        }
+          if (difficulty !== "EASY" && difficulty !== "MEDIUM" && difficulty !== "HARD") {
+            difficulty = "MEDIUM";
+          }
 
-        if (isNaN(marks)) marks = 2.0;
-        if (isNaN(negMarks)) negMarks = 0.5;
+          if (isNaN(marks)) marks = 2.0;
+          if (isNaN(negMarks)) negMarks = 0.5;
 
-        // Find or create subject
-        let subject = await tx.subject.findFirst({
-          where: { name: { equals: subjectName } },
-        });
+          // Find or create subject with in-memory caching to avoid redundant DB queries per row
+          const subjectKey = subjectName.toLowerCase();
+          let subject = subjectCache.get(subjectKey);
 
-        if (!subject) {
-          subject = await tx.subject.create({
+          if (!subject) {
+            subject = await tx.subject.findFirst({
+              where: { name: { equals: subjectName } },
+            });
+
+            if (!subject) {
+              subject = await tx.subject.create({
+                data: {
+                  name: subjectName,
+                  description: `Imported via CSV`,
+                },
+              });
+            }
+            subjectCache.set(subjectKey, subject);
+          }
+
+          // Create options array
+          const optionsList = [
+            { optionCode: "A", optionText: optAText },
+            { optionCode: "B", optionText: optBText },
+          ];
+          if (optCText) optionsList.push({ optionCode: "C", optionText: optCText });
+          if (optDText) optionsList.push({ optionCode: "D", optionText: optDText });
+
+          // Create Question
+          await tx.question.create({
             data: {
-              name: subjectName,
-              description: `Imported via CSV`,
+              questionText,
+              correctAnswer,
+              explanation,
+              difficulty,
+              defaultMarks: marks,
+              defaultNegativeMarks: negMarks,
+              subjectId: subject.id,
+              options: {
+                create: optionsList.map(o => ({
+                  optionCode: o.optionCode,
+                  optionText: o.optionText,
+                })),
+              },
             },
           });
+
+          importCount++;
         }
-
-        // Create options array
-        const optionsList = [
-          { optionCode: "A", optionText: optAText },
-          { optionCode: "B", optionText: optBText },
-        ];
-        if (optCText) optionsList.push({ optionCode: "C", optionText: optCText });
-        if (optDText) optionsList.push({ optionCode: "D", optionText: optDText });
-
-        // Create Question
-        await tx.question.create({
-          data: {
-            questionText,
-            correctAnswer,
-            explanation,
-            difficulty,
-            defaultMarks: marks,
-            defaultNegativeMarks: negMarks,
-            subjectId: subject.id,
-            options: {
-              create: optionsList.map(o => ({
-                optionCode: o.optionCode,
-                optionText: o.optionText,
-              })),
-            },
-          },
-        });
-
-        importCount++;
+      },
+      {
+        maxWait: 15000,
+        timeout: 60000,
       }
-    });
+    );
 
     return NextResponse.json({
       message: "Questions imported successfully",

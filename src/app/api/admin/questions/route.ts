@@ -105,3 +105,46 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
+
+// DELETE all questions (and cascade clean up related subjects, exams, and assignments)
+export async function DELETE(req: NextRequest) {
+  try {
+    if (!isAdmin(req)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const result = await db.$transaction(async (tx: any) => {
+      // 1. Delete all attempt answers & exam attempts
+      await tx.attemptAnswer.deleteMany({});
+      await tx.examAttempt.deleteMany({});
+
+      // 2. Delete all exam assignments
+      await tx.examAssignment.deleteMany({});
+
+      // 3. Delete all exam questions & exam subjects
+      await tx.examQuestion.deleteMany({});
+      await tx.examSubject.deleteMany({});
+
+      // 4. Delete all exams
+      await tx.exam.deleteMany({});
+
+      // 5. Delete all question options & questions
+      await tx.questionOption.deleteMany({});
+      const qRes = await tx.question.deleteMany({});
+
+      // 6. Delete all subjects
+      await tx.subject.deleteMany({});
+
+      return qRes;
+    });
+
+    return NextResponse.json({
+      message: "All question bank questions, related subjects, exams, and assignments deleted successfully",
+      count: result.count,
+    });
+  } catch (error: any) {
+    console.error("DELETE all questions error:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
+}
+

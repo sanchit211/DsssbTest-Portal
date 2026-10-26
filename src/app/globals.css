@@ -36,3 +36,30 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #334155;
 }
+
+@media print {
+  /* Reset background and text colors to default light page styles */
+  html, body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* Force print containers to flow naturally instead of being locked to screen dimensions */
+  main,
+  div,
+  .flex,
+  .grid {
+    height: auto !important;
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  /* Remove scrollbars and layout scroll container bounds */
+  body::-webkit-scrollbar,
+  main::-webkit-scrollbar,
+  div::-webkit-scrollbar {
+    display: none !important;
+  }
+}

@@ -183,7 +183,7 @@ export default function QuestionsClient() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this question? It will be removed from all exams containing it.")) return;
+    if (!confirm("Are you sure you want to delete this question? Any empty subjects or empty exams resulting from this will also be automatically removed.")) return;
 
     try {
       const res = await fetch(`/api/admin/questions/${id}`, {
@@ -198,6 +198,30 @@ export default function QuestionsClient() {
       fetchInitialData();
     } catch (err: any) {
       alert(err.message || "Failed to delete question");
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    const confirmFirst = confirm("WARNING: Are you sure you want to delete ALL questions from the question bank? This will automatically remove all associated subjects, exams, and candidate exam assignments!");
+    if (!confirmFirst) return;
+
+    const confirmSecond = confirm("Double Check: Are you absolutely sure? This will delete all question bank data, subjects, exams, attempts, and assignments permanently.");
+    if (!confirmSecond) return;
+
+    try {
+      const res = await fetch("/api/admin/questions", {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to delete all questions");
+      }
+
+      alert("Successfully deleted all question bank data, subjects, exams, and assignments!");
+      fetchInitialData();
+    } catch (err: any) {
+      alert(err.message || "Failed to delete all questions");
     }
   };
 
@@ -317,6 +341,16 @@ export default function QuestionsClient() {
               <Upload size={18} />
             )}
             Import CSV
+          </button>
+
+          <button
+            onClick={handleDeleteAll}
+            disabled={questions.length === 0}
+            className="inline-flex items-center justify-center gap-2 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-40 disabled:hover:bg-rose-500/10 text-rose-400 font-medium px-4 py-2.5 rounded-xl text-sm border border-rose-500/20 transition-all cursor-pointer shadow-lg shadow-rose-500/5"
+            title="Delete All Questions"
+          >
+            <Trash2 size={18} />
+            Delete All
           </button>
 
           <button
